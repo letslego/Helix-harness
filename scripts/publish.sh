@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Create a brand-new GitHub repository and push Helix to it.
+# Create a brand-new private GitHub repository and push Helix to it.
 # Refuses to push into an already-existing repository.
 #
 # Usage:
@@ -26,10 +26,10 @@ if gh repo view "$FULL" >/dev/null 2>&1; then
 fi
 
 gh repo create "$FULL" \
-  --public \
+  --private \
   --description "Recursive self-improving agent harness with an immutable event kernel" \
   --source=. \
   --remote=origin \
   --push
 
-echo "Created new repository: https://github.com/$FULL"
+echo "Created private repository: https://github.com/$FULL"
