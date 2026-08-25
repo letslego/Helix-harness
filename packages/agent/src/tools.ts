@@ -2,7 +2,19 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 
 import type { ToolRegistry, TurnContext } from "@helix/runtime";
-import { runShellCommand } from "@helix/runtime";
+import { runShellCommand, SchedulerStore } from "@helix/runtime";
+
+const schedulers = new Map<string, SchedulerStore>();
+
+function schedulerFor(context: TurnContext): SchedulerStore {
+  const key = context.kernel.paths.home;
+  let store = schedulers.get(key);
+  if (!store) {
+    store = new SchedulerStore(context.kernel.paths.home);
+    schedulers.set(key, store);
+  }
+  return store;
+}
 
 function stringArg(args: Record<string, unknown>, key: string): string {
   const value = args[key];
@@ -322,6 +334,85 @@ export function registerAgentTools(
     description: "Show clone lineage edges for this agent.",
     parameters: { type: "object", properties: {} },
     execute: () => context.kernel.listLineage(context.agent.id),
+  });
+
+  tools.register({
+    name: "schedule_task",
+    description:
+      "Schedule a sandbox shell command once (@at ISO time) or on an interval (everyMs).",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        command: { type: "string" },
+        everyMs: { type: "number" },
+        at: { type: "string" },
+        reportPrompt: { type: "string" },
+      },
+      required: ["name", "command"],
+    },
+    execute: (args) => {
+      const store = schedulerFor(context);
+      return store.schedule({
+        agentId: context.agent.id,
+        conversationId: context.conversation.id,
+        name: stringArg(args, "name"),
+        command: stringArg(args, "command"),
+        everyMs:
+          typeof args.everyMs === "number" ? args.everyMs : undefined,
+        at: optionalString(args, "at"),
+        reportPrompt: optionalString(args, "reportPrompt"),
+      });
+    },
+  });
+
+  tools.register({
+    name: "list_scheduled_tasks",
+    description: "List scheduled tasks for this agent.",
+    parameters: { type: "object", properties: {} },
+    execute: () => schedulerFor(context).list(context.agent.id),
+  });
+
+  tools.register({
+    name: "cancel_scheduled_task",
+    description: "Disable a scheduled task without deleting it.",
+    parameters: {
+      type: "object",
+      properties: { taskId: { type: "string" } },
+      required: ["taskId"],
+    },
+    execute: (args) => ({
+      ok: schedulerFor(context).cancel(stringArg(args, "taskId")),
+    }),
+  });
+
+  tools.register({
+    name: "run_due_tasks",
+    description:
+      "Execute any due scheduled tasks in the sandbox and return their results.",
+    parameters: { type: "object", properties: {} },
+    execute: async () => {
+      const store = schedulerFor(context);
+      const sandbox = ensureSandbox(context);
+      const due = store.due();
+      const results = [];
+      for (const task of due) {
+        if (task.agentId !== context.agent.id) continue;
+        const shell = await runShellCommand(task.command, {
+          cwd: sandbox.workDir,
+          timeoutMs: 60_000,
+        });
+        store.markFired(task.id);
+        results.push({
+          taskId: task.id,
+          name: task.name,
+          command: task.command,
+          reportPrompt: task.reportPrompt,
+          shell,
+        });
+      }
+      return { ran: results.length, results };
+    },
   });
 }
 

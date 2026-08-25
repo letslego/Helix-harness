@@ -70,6 +70,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/SELF.md](docs/SELF.md
 - Host/sandbox: `shell`, `read_file`, `write_file`, `snapshot_sandbox`, `rewind_sandbox`
 - Memory: `remember`, `forget`, `list_memories`
 - Introspection: `inspect_events`
+- Scheduling: `schedule_task`, `list_scheduled_tasks`, `cancel_scheduled_task`, `run_due_tasks`
 - Self-improvement: `open_experiment`, `close_experiment`, `list_experiments`,
   `clone_agent`, `list_lineage`
 
